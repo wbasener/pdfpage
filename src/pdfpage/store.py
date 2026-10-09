@@ -14,6 +14,11 @@ HOME = Path(os.environ.get("PDFPAGE_HOME", Path.home() / ".local/share/pdfpage")
 PORT = int(os.environ.get("PDFPAGE_PORT", "8473"))  # loopback port; a firewall never sees it
 PREFIX = os.environ.get("PDFPAGE_PREFIX", "/pdf")  # the path documents appear under
 DPI = int(os.environ.get("PDFPAGE_DPI", "150"))  # page-image resolution, readable for scans
+# Which view a document opens in: "pdf" is the browser's own scrolling PDF viewer, "images" the
+# pre-rendered pictures. ZOOM is a percentage passed to that viewer (Chrome, Edge and Firefox
+# all honour #zoom=; a browser that does not simply shows its own default size).
+MODE = os.environ.get("PDFPAGE_MODE", "pdf")
+ZOOM = int(os.environ.get("PDFPAGE_ZOOM", "125"))
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,8 @@ class Document:
     subtitle: str = ""
     quote: str = ""
     dpi: int = DPI
+    mode: str = MODE
+    zoom: int = ZOOM
 
     @property
     def cache(self) -> Path:

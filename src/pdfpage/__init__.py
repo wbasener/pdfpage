@@ -29,6 +29,8 @@ def publish(
     subtitle: str = "",
     quote: str = "",
     dpi: int = store.DPI,
+    mode: str = store.MODE,
+    zoom: int = store.ZOOM,
 ) -> str:
     """Publish a PDF and return the address that opens it at `page`.
 
@@ -41,7 +43,13 @@ def publish(
     subtitle a line of context under the heading, such as the full citation
     quote    a passage to show in a highlighted box, such as the sentence being checked
     dpi      page-image resolution; raise it for small print, lower it for large documents
+    mode     which view to open in: "pdf" (the browser's scrolling viewer) or "images"
+    zoom     the percentage the scrolling viewer opens at, for example 125
     """
+    if mode not in ("pdf", "images"):
+        raise ValueError(f'mode must be "pdf" or "images", not {mode!r}')
+    if not 10 <= zoom <= 1000:
+        raise ValueError(f"zoom must be a percentage between 10 and 1000, not {zoom}")
     path = Path(pdf).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(path)
@@ -66,6 +74,8 @@ def publish(
         subtitle=subtitle,
         quote=quote,
         dpi=dpi,
+        mode=mode,
+        zoom=zoom,
     )
     docs = store.load()
     if (old := docs.get(doc.slug)) and (old.pdf != doc.pdf or old.dpi != doc.dpi):

@@ -16,6 +16,7 @@ def _add(a: argparse.Namespace) -> int:
         url = pdfpage.publish(
             a.pdf, page=a.page, find=a.find, name=a.name, title=a.title,
             subtitle=a.subtitle, quote=a.quote, dpi=a.dpi,
+            mode="images" if a.images else "pdf", zoom=a.zoom,
         )  # fmt: skip
     except (FileNotFoundError, LookupError, ValueError, render.PopplerMissingError) as e:
         print(f"pdfpage: {e}", file=sys.stderr)
@@ -85,6 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument(
         "--dpi", type=int, default=store.DPI, help=f"page-image resolution (default {store.DPI})"
     )
+    add.add_argument(
+        "--zoom", type=int, default=store.ZOOM,
+        help=f"percentage the scrolling PDF opens at (default {store.ZOOM})",
+    )  # fmt: skip
+    add.add_argument("--images", action="store_true", help="open in the page images, not the scrolling PDF")
     add.set_defaults(func=_add)
 
     subs.add_parser("list", help="show what is published").set_defaults(func=_list)

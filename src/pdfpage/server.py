@@ -33,6 +33,8 @@ def viewer_html(doc: store.Document) -> str:
         .replace("__PDF__", "document.pdf")
         .replace("__START__", str(doc.page))
         .replace("__N__", str(doc.pages))
+        .replace("__MODE__", "pdf" if doc.mode == "pdf" else "img")
+        .replace("__ZOOM__", str(doc.zoom))
     )
 
 

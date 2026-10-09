@@ -57,11 +57,15 @@
   <div class="hint" id="hint"></div>
 </main>
 <script>
-const N = __N__, PDF = "__PDF__", START = __START__;
+const N = __N__, PDF = "__PDF__", START = __START__, ZOOM = __ZOOM__, START_MODE = "__MODE__";
 let page = clamp(parseInt(new URLSearchParams(location.hash.slice(1)).get("p")) || START);
 let mode = "img";
 
 function clamp(p) { return Math.min(Math.max(p || 1, 1), N); }
+
+// #page and #zoom are the usual way to open a PDF at a place and a size; Chrome, Edge and
+// Firefox all honour them, and a browser that does not just uses its own default size.
+function pdfSrc() { return `${PDF}#page=${page}&zoom=${ZOOM}`; }
 
 function show(p, toTop) {
   page = clamp(p);
@@ -69,12 +73,15 @@ function show(p, toTop) {
   document.getElementById("num").value = page;
   document.getElementById("prev").disabled = page <= 1;
   document.getElementById("next").disabled = page >= N;
-  // Setting the frame's address is what moves the browser's PDF viewer to a page.
-  if (mode === "pdf") document.getElementById("frame").src = `${PDF}#page=${page}`;
+  // Setting the frame's address is what moves the browser's PDF viewer to a page. Changing only
+  // the part after # jumps within the document it has already loaded, rather than fetching again.
+  if (mode === "pdf") document.getElementById("frame").src = pdfSrc();
   history.replaceState(null, "", `#p=${page}`);
   if (toTop) window.scrollTo({ top: 0 });
-  // Ask for the neighbours now, so stepping does not wait for them to be rendered.
-  for (const n of [page + 1, page - 1]) if (n >= 1 && n <= N) new Image().src = `page-${n}.png`;
+  // Ask for the neighbouring images now, so stepping does not wait for them to be rendered.
+  if (mode === "img") {
+    for (const n of [page + 1, page - 1]) if (n >= 1 && n <= N) new Image().src = `page-${n}.png`;
+  }
 }
 
 function setMode(m) {
@@ -87,7 +94,7 @@ function setMode(m) {
     ? "Left and right arrow keys step through the pages."
     : "Scroll freely in the frame; Ctrl+F searches the text. The buttons above jump to a page. "
       + "If the frame stays blank, your browser cannot show a PDF inside a page: use Page images.";
-  if (m === "pdf") document.getElementById("frame").src = `${PDF}#page=${page}`;
+  if (m === "pdf") document.getElementById("frame").src = pdfSrc();
 }
 
 document.getElementById("prev").addEventListener("click", () => show(page - 1, true));
@@ -110,8 +117,15 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") show(page - 1, true);
   if (e.key === "ArrowRight") show(page + 1, true);
 });
-setMode("img");
+// Open in the scrolling PDF unless the browser cannot show a PDF inside a page, as some phone
+// browsers cannot; then the page images, which always work.
+const canShowPdf = navigator.pdfViewerEnabled ?? true;
+setMode(START_MODE === "pdf" && canShowPdf ? "pdf" : "img");
 show(page, false);
+if (START_MODE === "pdf" && !canShowPdf) {
+  document.getElementById("hint").textContent =
+    "This browser cannot show a PDF inside a page, so the page images are shown instead.";
+}
 </script>
 </body>
 </html>

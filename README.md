@@ -19,8 +19,8 @@ url = pdfpage.publish("report.pdf", find="surface soil / lag geochemical survey"
 
 ## What the page gives you
 
-- **Page images**: every page rendered to a picture, with Previous and Next buttons, a page-number box, and the left and right arrow keys. This works in every browser, including on a phone.
-- **Scrolling PDF**: the browser's own PDF viewer, opened at the same page. Scroll freely through the whole document, and Ctrl+F searches the text.
+- **Scrolling PDF**, the view it opens in: the browser's own PDF viewer, at the chosen page and at 125% by default. Scroll freely through the whole document, and Ctrl+F searches the text.
+- **Page images**: every page rendered to a picture, with Previous and Next buttons, a page-number box, and the left and right arrow keys. Use this where a browser cannot show a PDF inside a page, as some phone browsers cannot; pdfpage switches to it by itself in that case.
 - **A link that remembers the page.** The address keeps the page number (`#p=12`) as you move, and a button copies it. Save that link next to the citation.
 - A heading, a line of context such as the full citation, and the quoted passage in a highlighted box.
 
@@ -36,12 +36,15 @@ sudo apt install poppler-utils     # Debian, Ubuntu
 brew install poppler               # macOS
 ```
 
-Then, from a clone of this repository:
+Then:
 
 ```
-pip install -e .            # into a project's environment, so `import pdfpage` works there
-uv tool install --editable .   # or as a command available in every shell
+pip install pdfpage                                    # from PyPI
+pip install git+https://github.com/wbasener/pdfpage    # or the latest from this repository
+uv tool install pdfpage                                # or as a command in every shell
 ```
+
+To work on it, from a clone: `pip install -e ".[dev]"`.
 
 [Tailscale](https://tailscale.com/) is optional.
 With it, the address works on all your devices; without it, you get a `http://127.0.0.1` address that works on the machine running `pdfpage`.
@@ -58,14 +61,25 @@ pdfpage where                                       folders, port, server state,
 pdfpage stop [--tailnet]                            stop the local server
 ```
 
-Useful options for `add`: `--name` (the last part of the address), `--title`, `--subtitle` (a full citation reads well here), `--quote`, `--dpi`.
+Useful options for `add`:
+
+| option | what it does |
+| --- | --- |
+| `--name` | the last part of the address; by default made from the file name |
+| `--title` | the heading; by default the file name |
+| `--subtitle` | a line of context under the heading, where a full citation reads well |
+| `--quote` | a passage to show in a highlighted box |
+| `--zoom` | the percentage the scrolling PDF opens at (default 125) |
+| `--images` | open in the page images instead of the scrolling PDF |
+| `--dpi` | page-image resolution (default 150); raise it for small print |
 
 ## From Python
 
 ```python
 import pdfpage
 
-pdfpage.publish(path, page=1, *, find="", name="", title="", subtitle="", quote="", dpi=150) -> str
+pdfpage.publish(path, page=1, *, find="", name="", title="", subtitle="", quote="",
+                dpi=150, mode="pdf", zoom=125) -> str
 pdfpage.url_for(name, page=None) -> str      # link to something already published
 pdfpage.page_of(path, phrase) -> int | None  # find a page without publishing
 pdfpage.published() -> dict[str, Document]
@@ -73,7 +87,7 @@ pdfpage.unpublish(name) -> bool
 pdfpage.shutdown(tailnet_too=False) -> bool
 ```
 
-`publish` raises `FileNotFoundError` for a missing file, `ValueError` for a page outside the document, and `LookupError` when `find` matches nothing.
+`publish` raises `FileNotFoundError` for a missing file, `ValueError` for a page outside the document or a `mode` or `zoom` that makes no sense, and `LookupError` when `find` matches nothing.
 
 ## How it works, and what it does not do
 
@@ -85,7 +99,9 @@ Your PDFs are **not** copied or moved.
 The list of published documents and the cached page images live under `~/.local/share/pdfpage` (set `PDFPAGE_HOME` to move them).
 Removing a document deletes its cached images and nothing else.
 
-Other settings, all through the environment: `PDFPAGE_PORT` (default 8473), `PDFPAGE_PREFIX` (default `/pdf`), `PDFPAGE_DPI` (default 150).
+Other settings, all through the environment: `PDFPAGE_PORT` (default 8473), `PDFPAGE_PREFIX` (default `/pdf`), `PDFPAGE_DPI` (default 150), `PDFPAGE_MODE` (`pdf` or `images`), `PDFPAGE_ZOOM` (default 125).
+
+How a browser is asked to open a PDF at a place and a size is a convention from Adobe's "PDF open parameters": the address ends `#page=12&zoom=125`. Chrome, Edge and Firefox all honour it. A browser that does not simply opens the document at its own default size, and the rest of the page still works.
 
 A scanned document carries text only where it has been through character recognition, so `--find` cannot work on a scan that has not been.
 Page numbers are positions in the file, counting the cover as page 1, which is often not the number printed on the page.

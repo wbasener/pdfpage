@@ -144,9 +144,25 @@ def test_slugify() -> None:
 def test_viewer_html_shows_the_page_and_escapes_the_title(sample_pdf: Path) -> None:
     doc = store.Document(slug="s", pdf=str(sample_pdf), pages=3, page=2, title="A & B <script>")
     page = server.viewer_html(doc)
-    assert 'const N = 3, PDF = "document.pdf", START = 2;' in page
+    assert 'const N = 3, PDF = "document.pdf", START = 2, ZOOM = 125, START_MODE = "pdf";' in page
     assert "<script>" not in page.split("</header>")[0], "the title is escaped, not run"
     assert "A &amp; B" in page
+
+
+def test_viewer_opens_in_the_chosen_view_and_zoom(sample_pdf: Path) -> None:
+    doc = store.Document(slug="s", pdf=str(sample_pdf), pages=3, page=2, mode="images", zoom=200)
+    page = server.viewer_html(doc)
+    assert 'START_MODE = "img"' in page
+    assert "ZOOM = 200" in page
+    assert "#page=${page}&zoom=${ZOOM}" in page, "the page and zoom go into the PDF address"
+
+
+def test_publish_rejects_a_bad_view_or_zoom(sample_pdf: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "start_background", lambda: None)
+    with pytest.raises(ValueError, match="mode"):
+        pdfpage.publish(sample_pdf, mode="sideways")
+    with pytest.raises(ValueError, match="zoom"):
+        pdfpage.publish(sample_pdf, zoom=0)
 
 
 def test_index_lists_documents(sample_pdf: Path) -> None:
