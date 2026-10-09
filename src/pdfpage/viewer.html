@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #1f2329; color: #e8eaed;
+         font: 15px/1.5 "Noto Sans", "Segoe UI", Arial, sans-serif; }
+  header { padding: 12px 18px 8px; }
+  h1 { margin: 0 0 3px; font-size: 18px; }
+  .sub { color: #b0b5bf; font-size: 13px; }
+  .quote { margin: 9px 0 0; padding: 7px 12px; border-left: 3px solid #ffd54f;
+           background: #262b33; max-width: 820px; font-size: 14px; }
+  .bar { padding: 9px 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+         border-bottom: 1px solid #3a4150; position: sticky; top: 0; background: #1f2329; z-index: 2; }
+  button, .bar a { font: 14px "Noto Sans", "Segoe UI", Arial, sans-serif; color: #e8eaed;
+                   background: #2b3038; border: 1px solid #b0b5bf; border-radius: 4px;
+                   padding: 5px 11px; cursor: pointer; text-decoration: none; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.on { background: #3a4150; font-weight: 600; }
+  .bar input { width: 64px; font: 14px "Noto Sans", "Segoe UI", Arial, sans-serif; color: #e8eaed;
+               background: #2b3038; border: 1px solid #b0b5bf; border-radius: 4px; padding: 5px; }
+  .gap { width: 14px; }
+  .count { color: #b0b5bf; font-size: 13px; }
+  main { padding: 12px 18px 20px; }
+  #images { text-align: center; }
+  #images img { max-width: 100%; border: 1px solid #3a4150; background: #fff; }
+  #pdf { display: none; }
+  iframe { width: 100%; height: 82vh; border: 1px solid #3a4150; background: #fff; }
+  .hint { color: #b0b5bf; font-size: 13px; margin-top: 8px; }
+  .copied { color: #7fd17f; }
+</style>
+</head>
+<body>
+<header>
+  <h1>__TITLE__</h1>
+  <div class="sub">__SUBTITLE__</div>
+  __QUOTE_BLOCK__
+</header>
+<div class="bar">
+  <button id="prev" title="Previous page (left arrow key)">&#8592; Previous</button>
+  <input id="num" type="number" min="1" max="__N__" step="1" title="Go to a page number">
+  <span class="count">of __N__</span>
+  <button id="next" title="Next page (right arrow key)">Next &#8594;</button>
+  <span class="gap"></span>
+  <button id="b-img" class="on" title="Pictures of the pages; works in every browser">Page images</button>
+  <button id="b-pdf" title="The browser's own PDF viewer: scroll freely, Ctrl+F searches">Scrolling PDF</button>
+  <span class="gap"></span>
+  <button id="copy" title="Copy a link that opens this document at the page shown">Copy link to this page</button>
+  <a href="__PDF__" download>Download the PDF</a>
+</div>
+<main>
+  <div id="images"><img id="img" alt="page"></div>
+  <div id="pdf"><iframe id="frame" title="__TITLE__"></iframe></div>
+  <div class="hint" id="hint"></div>
+</main>
+<script>
+const N = __N__, PDF = "__PDF__", START = __START__;
+let page = clamp(parseInt(new URLSearchParams(location.hash.slice(1)).get("p")) || START);
+let mode = "img";
+
+function clamp(p) { return Math.min(Math.max(p || 1, 1), N); }
+
+function show(p, toTop) {
+  page = clamp(p);
+  document.getElementById("img").src = `page-${page}.png`;
+  document.getElementById("num").value = page;
+  document.getElementById("prev").disabled = page <= 1;
+  document.getElementById("next").disabled = page >= N;
+  // Setting the frame's address is what moves the browser's PDF viewer to a page.
+  if (mode === "pdf") document.getElementById("frame").src = `${PDF}#page=${page}`;
+  history.replaceState(null, "", `#p=${page}`);
+  if (toTop) window.scrollTo({ top: 0 });
+  // Ask for the neighbours now, so stepping does not wait for them to be rendered.
+  for (const n of [page + 1, page - 1]) if (n >= 1 && n <= N) new Image().src = `page-${n}.png`;
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById("images").style.display = m === "img" ? "block" : "none";
+  document.getElementById("pdf").style.display = m === "pdf" ? "block" : "none";
+  document.getElementById("b-img").classList.toggle("on", m === "img");
+  document.getElementById("b-pdf").classList.toggle("on", m === "pdf");
+  document.getElementById("hint").textContent = m === "img"
+    ? "Left and right arrow keys step through the pages."
+    : "Scroll freely in the frame; Ctrl+F searches the text. The buttons above jump to a page. "
+      + "If the frame stays blank, your browser cannot show a PDF inside a page: use Page images.";
+  if (m === "pdf") document.getElementById("frame").src = `${PDF}#page=${page}`;
+}
+
+document.getElementById("prev").addEventListener("click", () => show(page - 1, true));
+document.getElementById("next").addEventListener("click", () => show(page + 1, true));
+document.getElementById("num").addEventListener("change", (e) => {
+  show(parseInt(e.target.value), true);
+  e.target.blur();  // let the arrow keys step pages again once a number has been typed
+});
+document.getElementById("b-img").addEventListener("click", () => setMode("img"));
+document.getElementById("b-pdf").addEventListener("click", () => setMode("pdf"));
+document.getElementById("copy").addEventListener("click", async (e) => {
+  const link = `${location.origin}${location.pathname}#p=${page}`;
+  try { await navigator.clipboard.writeText(link); } catch { prompt("Copy this link:", link); return; }
+  e.target.textContent = "Copied";
+  e.target.classList.add("copied");
+  setTimeout(() => { e.target.textContent = "Copy link to this page"; e.target.classList.remove("copied"); }, 1500);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowLeft") show(page - 1, true);
+  if (e.key === "ArrowRight") show(page + 1, true);
+});
+setMode("img");
+show(page, false);
+</script>
+</body>
+</html>
