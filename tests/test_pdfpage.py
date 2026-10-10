@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -191,6 +193,18 @@ def test_assets_are_in_the_package() -> None:
     assert "Apache License" in (root / "pdfjs/LICENSE").read_text(encoding="utf-8")
     assert pdfpage.content_type("x/pdf.min.mjs").startswith("text/javascript")
     assert pdfpage.content_type("a.wasm") == "application/wasm"
+
+
+def test_no_asset_is_left_out_of_git() -> None:
+    """A file of the viewer that git ignores would be missing from a clone and from GitHub's checks."""
+    repo = Path(__file__).resolve().parents[1]
+    if not (repo / ".git").exists() or not shutil.which("git"):
+        pytest.skip("not a git clone")
+    files = [str(f.relative_to(repo)) for f in pdfpage.assets_dir().rglob("*") if f.is_file()]
+    ignored = subprocess.run(
+        ["git", "check-ignore", "--no-index", *files], cwd=repo, capture_output=True, text=True
+    ).stdout.split()
+    assert ignored == []
 
 
 def test_no_em_dash_in_our_own_writing() -> None:
