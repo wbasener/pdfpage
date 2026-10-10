@@ -1,75 +1,20 @@
-"""Tests. They build a small PDF with poppler's own tools, so nothing else is needed."""
+"""Tests of the Python side: reading the PDF, publishing, quotes, records for a host, and the server."""
 
 from __future__ import annotations
 
-import subprocess
+import hashlib
+import json
+import threading
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
 import pdfpage
 from pdfpage import render, server, store
-
-
-@pytest.fixture(autouse=True)
-def _temporary_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Keep every test out of the real ~/.local/share/pdfpage."""
-    monkeypatch.setattr(store, "HOME", tmp_path / "home")
-    yield
-
-
-@pytest.fixture(scope="session")
-def sample_pdf(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """A three-page PDF whose pages say PAGE ONE, PAGE TWO and PAGE THREE."""
-    out = tmp_path_factory.mktemp("pdf")
-    text = out / "sample.txt"
-    text.write_text("PAGE ONE\n\f PAGE TWO\n\f PAGE THREE with a needle in it\n")
-    pdf = out / "sample.pdf"
-    try:
-        subprocess.run(["pstopdf", str(text)], check=True, capture_output=True)
-    except FileNotFoundError:
-        # ps2pdf and pstopdf are not always present; build the PDF by hand instead.
-        pdf.write_bytes(_minimal_pdf(["PAGE ONE", "PAGE TWO", "PAGE THREE with a needle in it"]))
-    return pdf
-
-
-def _minimal_pdf(pages: list[str]) -> bytes:
-    """A valid PDF with one line of text on each page, written out directly."""
-    objects: list[bytes] = []
-
-    def add(body: bytes) -> int:
-        objects.append(body)
-        return len(objects)
-
-    font = add(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-    kids, contents = [], []
-    for text in pages:
-        stream = f"BT /F1 24 Tf 72 700 Td ({text}) Tj ET".encode()
-        contents.append(add(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream)))
-    pages_obj = len(objects) + len(pages) + 1
-    for content in contents:
-        kids.append(
-            add(
-                b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 612 792] "
-                b"/Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>" % (pages_obj, font, content)
-            )
-        )
-    kid_refs = b" ".join(b"%d 0 R" % k for k in kids)
-    add(b"<< /Type /Pages /Kids [%s] /Count %d >>" % (kid_refs, len(kids)))
-    root = add(b"<< /Type /Catalog /Pages %d 0 R >>" % pages_obj)
-
-    out = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for i, body in enumerate(objects, start=1):
-        offsets.append(len(out))
-        out += b"%d 0 obj\n%s\nendobj\n" % (i, body)
-    start = len(out)
-    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
-    out += b"".join(b"%010d 00000 n \n" % o for o in offsets[1:])
-    out += b"trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, root, start)
-    return bytes(out)
-
 
 # ---- reading the PDF ------------------------------------------------------------------------
 
@@ -141,20 +86,36 @@ def test_slugify() -> None:
 # ---- the pages the server sends --------------------------------------------------------------
 
 
-def test_viewer_html_shows_the_page_and_escapes_the_title(sample_pdf: Path) -> None:
-    doc = store.Document(slug="s", pdf=str(sample_pdf), pages=3, page=2, title="A & B <script>")
+def test_viewer_html_carries_the_record_and_escapes_it(sample_pdf: Path, quote: str) -> None:
+    doc = store.Document(
+        slug="s", pdf=str(sample_pdf), pages=3, page=3, title="A & B </script><script>", quote=quote
+    )
     page = server.viewer_html(doc)
-    assert 'const N = 3, PDF = "document.pdf", START = 2, ZOOM = 125, START_MODE = "pdf";' in page
-    assert "<script>" not in page.split("</header>")[0], "the title is escaped, not run"
-    assert "A &amp; B" in page
+    head, _, _ = page.partition("</head>")
+    assert '<base href="../_viewer/' in head, "the viewer's own files come from one shared address"
+    assert "<title>A &amp; B &lt;/script&gt;&lt;script&gt;</title>" in head
+    data = head.split('id="pdfpage-record">')[1].split("</script>")[0]
+    assert "<" not in data, "nothing in the record can end the script element"
+    rec = json.loads(data)
+    assert (rec["doc"], rec["page"], rec["pages"], rec["zoom"], rec["view"]) == (
+        "document.pdf",
+        3,
+        3,
+        125,
+        "pdf",
+    )
+    assert rec["title"] == "A & B </script><script>"
+    assert rec["images"] == "page-{page}.png"
+    assert rec["highlight"] is not None and len(rec["highlight"]["boxes"]) == 2, (
+        "the quote is found on two lines"
+    )
+    assert rec["sha256"] == hashlib.sha256(sample_pdf.read_bytes()).hexdigest()
 
 
 def test_viewer_opens_in_the_chosen_view_and_zoom(sample_pdf: Path) -> None:
     doc = store.Document(slug="s", pdf=str(sample_pdf), pages=3, page=2, mode="images", zoom=200)
-    page = server.viewer_html(doc)
-    assert 'START_MODE = "img"' in page
-    assert "ZOOM = 200" in page
-    assert "#page=${page}&zoom=${ZOOM}" in page, "the page and zoom go into the PDF address"
+    rec = server.record(doc)
+    assert (rec["view"], rec["zoom"], rec["highlight"]) == ("images", 200, None)
 
 
 def test_publish_rejects_a_bad_view_or_zoom(sample_pdf: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -169,3 +130,167 @@ def test_index_lists_documents(sample_pdf: Path) -> None:
     docs = {"a": store.Document(slug="a", pdf=str(sample_pdf), pages=3, page=2, title="Alpha")}
     assert 'href="a/#p=2"' in server.index_html(docs)
     assert "none yet" in server.index_html({})
+
+
+# ---- quotes ---------------------------------------------------------------------------------
+
+
+def test_check_quote(sample_pdf: Path, quote: str) -> None:
+    assert pdfpage.check_quote(sample_pdf, 3, quote) == pdfpage.QuoteCheck(True, "found")
+    near = pdfpage.check_quote(sample_pdf, 2, quote)
+    assert (near.ok, near.found_on) == (False, [3])
+    assert "found on page 3" in near.reason
+    assert "too short" in pdfpage.check_quote(sample_pdf, 3, "a needle").reason
+    assert "outside" in pdfpage.check_quote(sample_pdf, 9, quote).reason
+    assert pdfpage.check_quote(sample_pdf.with_name("missing.pdf"), 1, quote).reason == "document not found"
+
+
+def test_quote_matching_ignores_case_spaces_and_punctuation(sample_pdf: Path) -> None:
+    assert pdfpage.check_quote(sample_pdf, 3, "A NEEDLE, in it - and a second   line!").ok
+
+
+def test_quote_boxes_one_box_per_line(sample_pdf: Path, quote: str) -> None:
+    found = pdfpage.quote_boxes(sample_pdf, 3, quote)
+    assert found is not None
+    assert found["page_size"] == [612.0, 792.0]
+    first, second = found["boxes"]
+    assert first[1] < second[1], "the first line is above the second, measured from the top"
+    assert all(0 <= v <= 612 for box in found["boxes"] for v in box)
+    assert pdfpage.quote_boxes(sample_pdf, 2, quote) is None, "not on that page"
+    assert pdfpage.quote_boxes(sample_pdf, 3, "") is None
+
+
+# ---- a host application's records -----------------------------------------------------------
+
+
+ASSETS = [
+    "viewer.html",
+    "viewer.js",
+    "viewer.css",
+    "pane.js",
+    "pane.css",
+    "fonts/OFL-NotoSans.txt",
+    "pdfjs/LICENSE",
+    "pdfjs/VERSION",
+    "pdfjs/build/pdf.min.mjs",
+    "pdfjs/build/pdf.worker.min.mjs",
+    "pdfjs/web/pdf_viewer.mjs",
+    "pdfjs/web/pdf_viewer.css",
+    "pdfjs/legacy/build/pdf.min.mjs",
+    "pdfjs/legacy/web/pdf_viewer.mjs",
+    "pdfjs/standard_fonts/LiberationSans-Regular.ttf",
+]
+OWN_TEXT = ["viewer.html", "viewer.js", "viewer.css", "pane.js", "pane.css", "pdfjs/VERSION"]
+EM_DASH = chr(0x2014)  # never in this package's own writing
+
+
+def test_assets_are_in_the_package() -> None:
+    root = pdfpage.assets_dir()
+    for name in ASSETS:
+        assert (root / name).is_file(), name
+    assert "Apache License" in (root / "pdfjs/LICENSE").read_text(encoding="utf-8")
+    assert pdfpage.content_type("x/pdf.min.mjs").startswith("text/javascript")
+    assert pdfpage.content_type("a.wasm") == "application/wasm"
+
+
+def test_no_em_dash_in_our_own_writing() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    files = [pdfpage.assets_dir() / n for n in OWN_TEXT]
+    files += [*repo.glob("*.md"), *repo.glob("src/pdfpage/*.py"), *repo.glob("tests/*.py")]
+    for f in files:
+        assert EM_DASH not in f.read_text(encoding="utf-8"), f
+
+
+def test_citation_record(sample_pdf: Path, quote: str) -> None:
+    rec = pdfpage.citation_record(
+        "../pdf/sample.pdf", 3, title="Sample", quote=quote, printed="3", pdf=sample_pdf
+    )
+    assert rec["doc"] == "../pdf/sample.pdf"
+    assert rec["printed"] == "", "a printed page equal to the file's own is not repeated"
+    assert (
+        rec["sha256"]
+        == pdfpage.file_sha256(sample_pdf)
+        == hashlib.sha256(sample_pdf.read_bytes()).hexdigest()
+    )
+    assert rec["highlight"] == pdfpage.quote_boxes(sample_pdf, 3, quote)
+    assert rec["zoom"] == "page-width"
+    json.dumps(rec)  # the record is plain JSON
+
+
+def test_citation_record_rejects_what_the_viewer_cannot_use() -> None:
+    for bad in ({"page": 0}, {"zoom": 5}, {"zoom": "huge"}, {"view": "sideways"}, {"images": "page.png"},
+                {"view": "images"}, {"page": 4, "pages": 3},
+                {"boxes": {"page_size": [612, 792], "boxes": [[10, 10, 5, 20]]}}):  # fmt: skip
+        with pytest.raises(ValueError):
+            pdfpage.citation_record("a.pdf", **bad)
+
+
+def test_viewer_url() -> None:
+    assert pdfpage.viewer_url("data/citations.json", assets="pdfpage/", id="c 1") == (
+        "pdfpage/viewer.html?record=../data/citations.json&id=c%201"
+    )
+    assert (
+        pdfpage.viewer_url("/data/c.json", assets="/pdfpage", page=4)
+        == "/pdfpage/viewer.html?record=/data/c.json#p=4"
+    )
+    assert pdfpage.viewer_url("c.json") == "viewer.html?record=c.json"
+    with pytest.raises(ValueError, match="both relative"):
+        pdfpage.viewer_url("data/c.json", assets="/pdfpage/")
+
+
+# ---- the server -----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def running(sample_pdf: Path, quote: str) -> Iterator[str]:
+    """The pdfpage server on a free loopback port, with the sample published as "sample" (written to the
+    registry directly: publish() would also point Tailscale at it)."""
+    store.save({"sample": store.Document(slug="sample", pdf=str(sample_pdf), pages=3, page=3, quote=quote)})
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}{store.PREFIX}"
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def _get(url: str, headers: dict[str, str] | None = None) -> tuple[int, dict[str, str], bytes]:
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req) as res:
+            return res.status, dict(res.headers), res.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), e.read()
+
+
+def test_server_sends_the_viewer_and_its_files(running: str) -> None:
+    status, _, body = _get(f"{running}/sample/")
+    assert status == 200 and b'id="pdfpage-record"' in body
+    status, headers, _ = _get(f"{running}/_viewer/0/pdfjs/build/pdf.min.mjs")
+    assert status == 200 and headers["Content-Type"].startswith("text/javascript")
+    assert _get(f"{running}/_viewer/0/../../store.py")[0] == 404, "nothing outside the viewer's folder"
+    assert _get(f"{running}/_viewer/0/%2e%2e/store.py")[0] == 404
+    assert _get(f"{running}/nothing/")[0] == 404
+
+
+def test_server_redirects_to_the_folder(running: str) -> None:
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args: object, **kwargs: object) -> None:
+            return None
+
+    opener = urllib.request.build_opener(NoRedirect)
+    with pytest.raises(urllib.error.HTTPError) as e:
+        opener.open(f"{running}/sample")
+    assert e.value.code == 301 and e.value.headers["Location"] == "sample/"
+
+
+def test_server_sends_part_of_the_pdf(running: str, sample_pdf: Path) -> None:
+    whole = sample_pdf.read_bytes()
+    status, headers, body = _get(f"{running}/sample/document.pdf", {"Range": "bytes=10-19"})
+    assert (status, body) == (206, whole[10:20])
+    assert headers["Content-Range"] == f"bytes 10-19/{len(whole)}"
+    status, _, body = _get(f"{running}/sample/document.pdf", {"Range": "bytes=-5"})
+    assert (status, body) == (206, whole[-5:])
+    status, headers, body = _get(f"{running}/sample/document.pdf")
+    assert (status, body, headers["Accept-Ranges"]) == (200, whole, "bytes")
+    assert _get(f"{running}/sample/document.pdf", {"Range": f"bytes={len(whole)}-"})[0] == 416

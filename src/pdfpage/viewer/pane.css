@@ -1,0 +1,84 @@
+/* pdfpage side pane (pane.js): the viewer in a pane on the right of a host page, or inside an element the host
+   names. A host may set these on :root (or on .pdfpage-pane):
+     --pdfpage-pane-top      how far below the top of the window the pane starts (a fixed header's height)
+     --pdfpage-pane-z        its stacking order (default 60)
+     --pdfpage-inline-height the height of a pane placed inside a host element (default 75vh)
+   and the colours --pdfpage-pane-bg, -bar, -text, -muted, -line, -accent and -stage, set per theme below. */
+.pdfpage-pane {
+  --pdfpage-pane-bg: #1b1b1f;
+  --pdfpage-pane-text: #f4f5f7;
+  --pdfpage-pane-muted: #b0b5bf;
+  --pdfpage-pane-line: #3a3a42;
+  --pdfpage-pane-btn: #26262c;
+  --pdfpage-pane-accent: #e0925c;
+  --pdfpage-pane-stage: #2a2a2e;
+  position: fixed; top: var(--pdfpage-pane-top, 0px); right: 0; bottom: 0; z-index: var(--pdfpage-pane-z, 60);
+  width: var(--pdfpage-pane-width, min(46vw, 820px)); display: flex; flex-direction: column;
+  background: var(--pdfpage-pane-bg); color: var(--pdfpage-pane-text); border-left: 1px solid var(--pdfpage-pane-line);
+  box-shadow: -4px 0 16px rgb(0 0 0 / 0.25); box-sizing: border-box;
+  font: 13px/1.4 "Noto Sans", "Segoe UI", system-ui, Arial, sans-serif;
+}
+.pdfpage-pane[data-theme="light"] {
+  --pdfpage-pane-bg: #ffffff;
+  --pdfpage-pane-text: #17171b;
+  --pdfpage-pane-muted: #555b66;
+  --pdfpage-pane-line: #c9c9cf;
+  --pdfpage-pane-btn: #f3f3f0;
+  --pdfpage-pane-accent: #a24f12;
+  --pdfpage-pane-stage: #e3e3df;
+  box-shadow: -4px 0 16px rgb(0 0 0 / 0.08);
+}
+.pdfpage-pane[hidden] { display: none; }
+.pdfpage-pane *, .pdfpage-pane *::before, .pdfpage-pane *::after { box-sizing: border-box; }
+
+.pdfpage-pane-bar {
+  flex: none; display: flex; align-items: center; gap: 14px; min-height: 40px; padding: 5px 10px 5px 14px;
+  border-bottom: 1px solid var(--pdfpage-pane-line);
+}
+.pdfpage-pane-label {
+  flex: 1 1 auto; min-width: 0; color: var(--pdfpage-pane-muted); font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pdfpage-pane-tab {
+  flex: none; color: var(--pdfpage-pane-accent); font-size: 13px; white-space: nowrap;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.pdfpage-pane-close {
+  flex: none; height: 28px; padding: 0 12px; font: inherit; font-size: 13px; color: var(--pdfpage-pane-text);
+  background: var(--pdfpage-pane-btn); border: 1px solid var(--pdfpage-pane-line); border-radius: 5px; cursor: pointer;
+}
+.pdfpage-pane-close:hover { border-color: var(--pdfpage-pane-accent); }
+.pdfpage-pane :focus-visible { outline: 2px solid var(--pdfpage-pane-accent); outline-offset: 1px; }
+.pdfpage-pane-frame { flex: 1 1 auto; min-height: 0; width: 100%; border: 0; display: block; background: var(--pdfpage-pane-stage); }
+
+/* The left edge, for changing the width. */
+.pdfpage-pane-grip {
+  position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 1; touch-action: none;
+}
+.pdfpage-pane-grip::after {
+  content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; background: transparent;
+  transition: background-color 0.15s;
+}
+.pdfpage-pane-grip:hover::after, .pdfpage-pane-grip:focus-visible::after, .pdfpage-pane-resizing .pdfpage-pane-grip::after {
+  background: var(--pdfpage-pane-accent);
+}
+.pdfpage-pane-grip:focus-visible { outline: none; }
+.pdfpage-pane-resizing .pdfpage-pane-frame { pointer-events: none; }
+html.pdfpage-pane-open:has(.pdfpage-pane-resizing) { cursor: col-resize; user-select: none; }
+
+/* A pane inside a host element. */
+.pdfpage-pane.pdfpage-pane-inline {
+  position: relative; top: auto; right: auto; bottom: auto; width: 100%; height: var(--pdfpage-inline-height, 75vh);
+  min-height: 360px; border: 1px solid var(--pdfpage-pane-line); border-radius: 6px; overflow: hidden; box-shadow: none;
+}
+
+/* The host page moves aside while the pane is open. */
+@media (min-width: 901px) {
+  html.pdfpage-pane-open:not([data-pdfpage-push="off"]) body { margin-right: var(--pdfpage-pane-width, min(46vw, 820px)); }
+}
+/* At a narrow width the pane is the whole window, above everything. */
+@media (max-width: 900px) {
+  .pdfpage-pane:not(.pdfpage-pane-inline) { top: 0; left: 0; width: 100%; border-left: 0; box-shadow: none; z-index: 2147483000; }
+  .pdfpage-pane-grip { display: none; }
+}
+@media print { .pdfpage-pane { display: none; } }

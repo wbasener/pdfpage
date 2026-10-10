@@ -32,7 +32,12 @@ def page_count(pdf: Path) -> int:
 
 def page_text(pdf: Path, page: int) -> str:
     """The text of one page, for finding which page a quoted passage is on."""
-    return _run(["pdftotext", "-f", str(page), "-l", str(page), str(pdf), "-"]).stdout
+    return _run(["pdftotext", "-q", "-enc", "UTF-8", "-f", str(page), "-l", str(page), str(pdf), "-"]).stdout
+
+
+def page_bbox(pdf: Path, page: int) -> str:
+    """One page as pdftotext -bbox writes it: each word with its box, in points from the top left corner."""
+    return _run(["pdftotext", "-q", "-bbox", "-f", str(page), "-l", str(page), str(pdf), "-"]).stdout
 
 
 def find_page(pdf: Path, phrase: str, pages: int | None = None) -> int | None:

@@ -1,0 +1,161 @@
+/* The pdfpage viewer page (viewer.html), on its own in a tab or inside the side pane of a host page.
+   Text is Noto Sans (fonts/, SIL Open Font License), nothing under 12 px; grey text on the dark background is no
+   darker than #b0b5bf, and on the light background no lighter than #555b66. */
+@font-face {
+  font-family: "Noto Sans"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(fonts/NotoSans-Regular.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans"; font-style: normal; font-weight: 600; font-display: swap;
+  src: url(fonts/NotoSans-SemiBold.woff2) format("woff2");
+}
+
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --panel: #1b1b1f;      /* the header */
+  --btn: #26262c;
+  --btn-hover: #303038;
+  --btn-on: #3d2f25;     /* the chosen tool */
+  --line: #3a3a42;
+  --line-strong: #55555f;
+  --text: #f4f5f7;
+  --muted: #b0b5bf;
+  --accent: #e0925c;
+  --quote-bar: #f2c14e;
+  --stage: #2a2a2e;      /* behind the pages */
+  --shadow: rgb(0 0 0 / 0.5);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --panel: #ffffff;
+  --btn: #f3f3f0;
+  --btn-hover: #e8e8e3;
+  --btn-on: #f7e3d3;
+  --line: #c9c9cf;
+  --line-strong: #9a9aa3;
+  --text: #17171b;
+  --muted: #555b66;
+  --accent: #a24f12;
+  --quote-bar: #c98a00;
+  --stage: #e3e3df;
+  --shadow: rgb(0 0 0 / 0.18);
+}
+
+/* Border-box sizing for this page's own parts only: PDF.js sizes its pages as content boxes inside a border, and
+   would draw the page 18 px shorter than its text layer under a global rule. */
+:is(.pp-head, .pp-msg, .pp-pop, .pp-toast, .pp-images, .pp-native),
+:is(.pp-head, .pp-msg, .pp-pop, .pp-toast, .pp-images) * { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--stage); color: var(--text);
+  font: 14px/1.45 "Noto Sans", "Segoe UI", system-ui, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+}
+[hidden] { display: none !important; }
+
+/* ---- the header: what the document is, then the tools. It is a block of its own above the pages, so however
+   many rows the tools need at a narrow width, none of them is ever behind the page. */
+.pp-head {
+  flex: none; display: flex; flex-direction: column; gap: 7px; padding: 8px 12px 9px;
+  background: var(--panel); border-bottom: 1px solid var(--line); position: relative; z-index: 5;
+}
+.pp-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pp-titlerow { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.pp-title { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; flex: 1 1 auto; min-width: 0; }
+.pp-sub, .pp-note { font-size: 13px; color: var(--muted); }
+.pp-quote {
+  font-size: 13px; border-left: 3px solid var(--quote-bar); padding: 1px 0 1px 9px; color: var(--text);
+}
+.pp-where { color: var(--muted); margin-right: 6px; }
+/* One line each, cut with an ellipsis, until "Show in full" opens them; the full title is also the tooltip. */
+.pp-info:not(.pp-open) :is(.pp-title, .pp-sub, .pp-quote, .pp-note) {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pp-info.pp-open { max-height: 45vh; overflow-y: auto; }
+.pp-link {
+  flex: none; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 13px;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap;
+}
+
+.pp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.pp-group { display: flex; align-items: center; gap: 5px; flex: none; }
+.pp-head button:not(.pp-link), .pp-head input, .pp-menu-list a {
+  height: 30px; padding: 0 10px; font: inherit; font-size: 13px; color: var(--text); background: var(--btn);
+  border: 1px solid var(--line-strong); border-radius: 5px; white-space: nowrap; cursor: pointer;
+}
+.pp-head button:not(.pp-link):hover:not(:disabled) { background: var(--btn-hover); border-color: var(--accent); }
+.pp-head button:disabled { opacity: 0.45; cursor: default; }
+.pp-head :focus-visible, .pp-container:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pp-container:focus-visible { outline-offset: -2px; }
+.pp-head input { width: 52px; padding: 0 6px; text-align: center; cursor: text; }
+.pp-muted { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.pp-pct { min-width: 46px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pp-seg { gap: 0; }
+.pp-seg button:first-child { border-radius: 5px 0 0 5px; }
+.pp-seg button:last-child { border-radius: 0 5px 5px 0; margin-left: -1px; }
+.pp-seg button[aria-checked="true"] {
+  background: var(--btn-on); border-color: var(--accent); font-weight: 600; position: relative; z-index: 1;
+}
+
+.pp-menu { position: relative; }
+.pp-menu-list {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 230px; padding: 6px;
+  display: flex; flex-direction: column; gap: 4px; background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: 6px; box-shadow: 0 6px 18px var(--shadow);
+}
+.pp-head .pp-menu-list :is(button, a) {
+  display: flex; align-items: center; width: 100%; padding: 0 10px; text-align: left; text-decoration: none;
+  border-color: transparent; background: transparent;
+}
+.pp-head .pp-menu-list :is(button, a):hover:not(:disabled) { background: var(--btn-hover); border-color: var(--line-strong); }
+.pp-menu-note { margin: 2px 10px 2px; font-size: 12px; color: var(--muted); max-width: 230px; }
+
+/* At a narrow width the page and size buttons show arrows and signs only; their names stay in the tooltips. */
+@media (max-width: 620px) {
+  .pp-wide { display: none; }
+  .pp-head { padding: 7px 10px 8px; }
+  .pp-bar { gap: 6px 10px; }
+  .pp-head button:not(.pp-link) { padding: 0 9px; }
+  .pp-info:not(.pp-open) .pp-sub { display: none; }   /* room for the page; "Show in full" shows it */
+}
+
+/* ---- the pages. PDF.js needs its container absolutely placed; the stage below the header gives it the room. */
+.pp-stage { flex: 1 1 auto; min-height: 0; position: relative; }
+.pp-container { position: absolute; inset: 0; overflow: auto; background: var(--stage); }
+.pp-container .pdfViewer { padding: 8px 0 24px; }
+.pp-tool-hand { cursor: grab; }
+.pp-tool-hand .textLayer, .pp-tool-hand .textLayer :is(span, br) { cursor: grab; user-select: none; }
+.pp-tool-hand.pp-dragging, .pp-tool-hand.pp-dragging * { cursor: grabbing !important; }
+.pp-native { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--stage); }
+.pp-msg {
+  position: absolute; top: 14px; left: 14px; right: 14px; z-index: 10; max-width: 640px; padding: 9px 12px;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px; font-size: 14px;
+}
+.pp-msg a { color: var(--accent); }
+.pp-images { text-align: center; padding: 12px; }
+.pp-imgpage { position: relative; display: inline-block; vertical-align: top; max-width: none; }
+.pp-imgpage img { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 1px 6px var(--shadow); user-select: none; -webkit-user-drag: none; }
+
+/* ---- marks on a page: the cited quote (fixed) and the reader's own highlights. Positions are fractions of the
+   page, so they stay in place at every size. Multiplied with the page, the text under them stays black. */
+.pp-marks { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.pp-mark { position: absolute; border-radius: 2px; mix-blend-mode: multiply; }
+.pp-mark.pp-q { background: rgb(255 196 0 / 0.36); outline: 2px solid rgb(232 140 0 / 0.95); outline-offset: 1px; }
+.pp-mark.pp-h { background: rgb(255 238 0 / 0.55); }
+.pp-mark.pp-h.pp-sel { background: rgb(255 214 0 / 0.75); outline: 2px solid #1565c0; outline-offset: 1px; }
+.pp-pop {
+  position: absolute; z-index: 20; pointer-events: auto; transform: translate(-100%, 6px);
+  display: flex; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: 6px; box-shadow: 0 4px 14px var(--shadow);
+}
+.pp-pop button {
+  height: 30px; padding: 0 10px; font: inherit; font-size: 13px; color: var(--text); background: var(--btn);
+  border: 1px solid var(--line-strong); border-radius: 5px; white-space: nowrap; cursor: pointer;
+}
+.pp-pop button:hover { border-color: var(--accent); background: var(--btn-hover); }
+
+.pp-toast {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 40; max-width: calc(100% - 32px);
+  padding: 8px 14px; background: var(--panel); color: var(--text); border: 1px solid var(--line-strong);
+  border-radius: 6px; box-shadow: 0 4px 14px var(--shadow); font-size: 13px;
+}

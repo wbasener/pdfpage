@@ -14,9 +14,9 @@ HOME = Path(os.environ.get("PDFPAGE_HOME", Path.home() / ".local/share/pdfpage")
 PORT = int(os.environ.get("PDFPAGE_PORT", "8473"))  # loopback port; a firewall never sees it
 PREFIX = os.environ.get("PDFPAGE_PREFIX", "/pdf")  # the path documents appear under
 DPI = int(os.environ.get("PDFPAGE_DPI", "150"))  # page-image resolution, readable for scans
-# Which view a document opens in: "pdf" is the browser's own scrolling PDF viewer, "images" the
-# pre-rendered pictures. ZOOM is a percentage passed to that viewer (Chrome, Edge and Firefox
-# all honour #zoom=; a browser that does not simply shows its own default size).
+# Which view a document opens in: "pdf" is the scrolling PDF (PDF.js, with zoom and highlights),
+# "images" the pre-rendered pictures. ZOOM is the percentage it opens at; a window narrower than
+# the page at that size opens at the window's width.
 MODE = os.environ.get("PDFPAGE_MODE", "pdf")
 ZOOM = int(os.environ.get("PDFPAGE_ZOOM", "125"))
 

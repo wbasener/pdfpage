@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pdfpage</title>
+<script>
+  // The theme is set before the page is drawn, so it does not flash in the other one: the host page's choice
+  // (?theme=, from the side pane), else the reader's own (the menu), else the system's.
+  (function () {
+    var t = new URLSearchParams(location.search).get("theme");
+    if (t !== "light" && t !== "dark") { try { t = localStorage.getItem("pdfpage-theme"); } catch (e) { t = null; } }
+    if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", t);
+  })();
+</script>
+<link rel="stylesheet" href="pdfjs/web/pdf_viewer.css">
+<link rel="stylesheet" href="viewer.css">
+<script type="module" src="viewer.js"></script>
+</head>
+<body>
+<header class="pp-head">
+  <div class="pp-info" id="info">
+    <div class="pp-titlerow">
+      <h1 class="pp-title" id="title">Opening the document...</h1>
+      <button type="button" class="pp-link" id="expand" aria-expanded="false" aria-controls="info" hidden>Show in full</button>
+    </div>
+    <div class="pp-sub" id="sub" hidden></div>
+    <div class="pp-quote" id="quote" hidden><span class="pp-where" id="quoteWhere"></span><span id="quoteText"></span></div>
+    <div class="pp-note" id="note" hidden></div>
+  </div>
+  <div class="pp-bar" role="toolbar" aria-label="Document tools">
+    <div class="pp-group" role="group" aria-label="Pages">
+      <button type="button" id="prev" title="Previous page"><span aria-hidden="true">&#8592;</span><span class="pp-wide"> Previous</span></button>
+      <input id="num" type="text" inputmode="numeric" autocomplete="off" aria-label="Page number" title="Type a page number and press Enter">
+      <span class="pp-muted" id="count"></span>
+      <button type="button" id="next" title="Next page"><span class="pp-wide">Next </span><span aria-hidden="true">&#8594;</span></button>
+    </div>
+    <div class="pp-group" role="group" aria-label="Size">
+      <button type="button" id="zoomOut" title="Zoom out (the - key)" aria-label="Zoom out"><span aria-hidden="true">&#8722;</span><span class="pp-wide" aria-hidden="true"> Zoom out</span></button>
+      <span class="pp-pct" id="pct" aria-live="polite">100%</span>
+      <button type="button" id="zoomIn" title="Zoom in (the + key)" aria-label="Zoom in"><span aria-hidden="true">+</span><span class="pp-wide" aria-hidden="true"> Zoom in</span></button>
+      <button type="button" id="fit" title="Fit the page to the width of the window">Fit width</button>
+    </div>
+    <div class="pp-group pp-seg" role="radiogroup" aria-label="Tool" id="tools">
+      <button type="button" role="radio" id="toolHl" aria-checked="true"
+              title="Highlight: select words on the page to highlight them; click a highlight to remove it">Highlight</button>
+      <button type="button" role="radio" id="toolHand" aria-checked="false"
+              title="Hand: drag the page to move around it (or hold the space bar)">Hand</button>
+    </div>
+    <div class="pp-group">
+      <button type="button" id="toQuote" title="Scroll back to the quoted passage" hidden>Back to the quote</button>
+      <div class="pp-menu">
+        <button type="button" id="moreBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="menu">More<span aria-hidden="true"> &#9662;</span></button>
+        <div class="pp-menu-list" id="menu" role="menu" hidden>
+          <button type="button" role="menuitem" id="copyLink">Copy link to this page</button>
+          <a role="menuitem" id="openFile" target="_blank" rel="noopener">Open the PDF file</a>
+          <button type="button" role="menuitem" id="viewSwitch" hidden>Show page images</button>
+          <button type="button" role="menuitem" id="clearHl">Clear my highlights</button>
+          <button type="button" role="menuitem" id="themeBtn">Light page</button>
+          <p class="pp-menu-note" id="storeNote">Your highlights are kept in this browser only.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+<main class="pp-stage" id="stage">
+  <div class="pp-container pp-tool-highlight" id="container" tabindex="0" aria-label="Document pages">
+    <div class="pdfViewer" id="viewer"></div>
+  </div>
+  <div class="pp-container pp-images pp-tool-hand" id="images" tabindex="0" aria-label="Page image" hidden>
+    <div class="pp-imgpage" id="imgPage"><img id="img" alt=""></div>
+  </div>
+  <iframe class="pp-native" id="native" title="The PDF in the browser's own viewer" hidden></iframe>
+  <div class="pp-msg" id="msg" role="status">Opening the document...</div>
+</main>
+<div class="pp-toast" id="toast" role="status" hidden></div>
+<noscript><p class="pp-msg">This viewer needs JavaScript.</p></noscript>
+</body>
+</html>

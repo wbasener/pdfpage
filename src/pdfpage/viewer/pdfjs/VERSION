@@ -1,0 +1,7 @@
+pdfjs-dist 6.3.289 (PDF.js by the Mozilla Foundation, Apache License 2.0: LICENSE beside this file)
+Source: https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.3.289.tgz
+Integrity: sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw==
+Copied unchanged: build/pdf.min.mjs, build/pdf.worker.min.mjs, web/pdf_viewer.mjs, web/pdf_viewer.css, web/images/,
+legacy/build/pdf.min.mjs, legacy/build/pdf.worker.min.mjs, legacy/web/pdf_viewer.mjs, cmaps/, standard_fonts/, iccs/,
+and wasm/ without quickjs-eval (the scripting engine, which the viewer does not turn on).
+The legacy/ build is the one for browsers without the newest JavaScript; the viewer uses it when the other fails.

@@ -4,13 +4,21 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdfpage"
-version = "0.1.0"
-description = "Read a PDF in a browser at a chosen page, from any of your devices"
+version = "0.2.0"
+description = "Read a PDF in a browser at a chosen page, from any of your devices or beside your own web pages"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+# pdfpage; PDF.js; Noto Sans; the PDF.js font, JBIG2 and JPEG 2000 parts; the Liberation fonts PDF.js uses
+license = "MIT AND Apache-2.0 AND OFL-1.1 AND BSD-3-Clause AND BSD-2-Clause AND (GPL-2.0-only WITH Font-exception-2.0)"
+license-files = [
+  "LICENSE",
+  "src/pdfpage/viewer/pdfjs/LICENSE",
+  "src/pdfpage/viewer/fonts/OFL-NotoSans.txt",
+  "src/pdfpage/viewer/pdfjs/standard_fonts/LICENSE_*",
+  "src/pdfpage/viewer/pdfjs/wasm/LICENSE_*",
+]
 authors = [{ name = "Bill Basener" }]
-keywords = ["pdf", "viewer", "citation", "tailscale"]
+keywords = ["pdf", "viewer", "citation", "highlight", "pdf.js", "tailscale"]
 dependencies = []  # the standard library, plus poppler-utils and tailscale as outside programs
 
 [project.urls]
@@ -20,7 +28,7 @@ Homepage = "https://github.com/wbasener/pdfpage"
 pdfpage = "pdfpage.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "playwright>=1.45"]  # playwright: the browser tests
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdfpage"]

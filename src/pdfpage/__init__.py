@@ -5,6 +5,10 @@
     url = pdfpage.publish("report.pdf", find="soil / lag")  # or let it find the page
 
 The address keeps the page number (#p=12), so it can be saved beside a citation.
+
+Another web application can show the same viewer, in a new tab or in a pane beside its own page, without the
+pdfpage server: it serves `assets_dir()` and a record from `citation_record` (see host.py). `check_quote` and
+`quote_boxes` check a quoted passage against its page and find where on the page it sits (see quote.py).
 """
 
 from __future__ import annotations
@@ -13,10 +17,29 @@ import shutil
 from pathlib import Path
 
 from . import render, server, store, tailnet
+from .host import assets_dir, citation_record, content_type, file_sha256, viewer_url
+from .quote import QuoteBoxes, QuoteCheck, check_quote, quote_boxes
 from .store import Document
 
-__all__ = ["Document", "page_of", "publish", "published", "shutdown", "unpublish", "url_for"]
-__version__ = "0.1.0"
+__all__ = [
+    "Document",
+    "QuoteBoxes",
+    "QuoteCheck",
+    "assets_dir",
+    "check_quote",
+    "citation_record",
+    "content_type",
+    "file_sha256",
+    "page_of",
+    "publish",
+    "published",
+    "quote_boxes",
+    "shutdown",
+    "unpublish",
+    "url_for",
+    "viewer_url",
+]
+__version__ = "0.2.0"
 
 
 def publish(
@@ -43,8 +66,9 @@ def publish(
     subtitle a line of context under the heading, such as the full citation
     quote    a passage to show in a highlighted box, such as the sentence being checked
     dpi      page-image resolution; raise it for small print, lower it for large documents
-    mode     which view to open in: "pdf" (the browser's scrolling viewer) or "images"
-    zoom     the percentage the scrolling viewer opens at, for example 125
+    mode     which view to open in: "pdf" (the scrolling PDF, with its text, zoom and highlights) or "images"
+             (pictures of the pages, for a browser that cannot run the PDF viewer)
+    zoom     the percentage the scrolling PDF opens at, for example 125
     """
     if mode not in ("pdf", "images"):
         raise ValueError(f'mode must be "pdf" or "images", not {mode!r}')

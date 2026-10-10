@@ -82,13 +82,13 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("--name", default="", help="the last part of the address")
     add.add_argument("--title", default="", help="heading; default: the file name")
     add.add_argument("--subtitle", default="", help="a line of context, such as the full citation")
-    add.add_argument("--quote", default="", help="a passage to highlight under the heading")
+    add.add_argument("--quote", default="", help="a passage to mark on the page and show under the heading")
     add.add_argument(
         "--dpi", type=int, default=store.DPI, help=f"page-image resolution (default {store.DPI})"
     )
     add.add_argument(
         "--zoom", type=int, default=store.ZOOM,
-        help=f"percentage the scrolling PDF opens at (default {store.ZOOM})",
+        help=f"percentage the document opens at (default {store.ZOOM})",
     )  # fmt: skip
     add.add_argument("--images", action="store_true", help="open in the page images, not the scrolling PDF")
     add.set_defaults(func=_add)

@@ -8,33 +8,59 @@ devices; see tailnet.py.
 from __future__ import annotations
 
 import html
+import json
 import os
+import re
 import signal
 import socket
 import subprocess
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from importlib import resources
 from pathlib import Path
 from urllib.parse import unquote
 
-from . import render, store
+from . import host, render, store
 
-TEMPLATE = resources.files(__package__).joinpath("viewer.html").read_text(encoding="utf-8")
+ASSETS = (
+    "_viewer"  # the path under PREFIX that serves the viewer's files; no document's name can start with _
+)
+
+
+def record(doc: store.Document) -> dict[str, object]:
+    """The record the viewer reads for a published document (host.citation_record)."""
+    return host.citation_record(
+        "document.pdf",
+        doc.page,
+        title=doc.title or doc.slug,
+        subtitle=doc.subtitle,
+        quote=doc.quote,
+        pages=doc.pages,
+        zoom=doc.zoom,
+        images="page-{page}.png",
+        view="images" if doc.mode == "images" else "pdf",
+        pdf=doc.pdf,
+    )
 
 
 def viewer_html(doc: store.Document) -> str:
-    quote = f'<p class="quote">{html.escape(doc.quote)}</p>' if doc.quote else ""
+    """The viewer page of one document: the package's viewer.html with the document's record written into it.
+
+    The page's own files are fetched from PREFIX/_viewer/<version>/ (the <base> element), so a browser keeps
+    them between documents and fetches them again only after an upgrade.
+    """
+    from . import __version__  # here, not at the top: the package imports this module before it sets it
+
+    data = json.dumps(record(doc), ensure_ascii=False)
+    # Inside <script>, "</script>" would end the element; escaped, the JSON reads the same.
+    data = data.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    page = (host.assets_dir() / "viewer.html").read_text(encoding="utf-8")
+    head = f'<head>\n<base href="../{ASSETS}/{__version__}/">'
+    script = f'<script type="application/json" id="pdfpage-record">{data}</script>\n</head>'
     return (
-        TEMPLATE.replace("__TITLE__", html.escape(doc.title or doc.slug))
-        .replace("__SUBTITLE__", html.escape(doc.subtitle))
-        .replace("__QUOTE_BLOCK__", quote)
-        .replace("__PDF__", "document.pdf")
-        .replace("__START__", str(doc.page))
-        .replace("__N__", str(doc.pages))
-        .replace("__MODE__", "pdf" if doc.mode == "pdf" else "img")
-        .replace("__ZOOM__", str(doc.zoom))
+        page.replace("<head>", head, 1)
+        .replace("</head>", script, 1)
+        .replace("<title>pdfpage</title>", f"<title>{html.escape(doc.title or doc.slug)}</title>", 1)
     )
 
 
@@ -68,18 +94,33 @@ class Handler(BaseHTTPRequestHandler):
             self._send(index_html(docs).encode(), "text/html; charset=utf-8")
             return
         slug, _, item = rest.partition("/")
+        if slug == ASSETS:
+            self._send_asset(
+                item.partition("/")[2]
+            )  # the first part is the version, which only defeats caches
+            return
         doc = docs.get(slug)
         if doc is None:
             self.send_error(404, "no such document")
             return
-        if item in ("", "index.html"):
+        if item == "" and not path.endswith("/"):
+            self._redirect(f"{slug}/")  # the viewer's addresses are relative to the folder, /pdf/<name>/
+        elif item in ("", "index.html"):
             self._send(viewer_html(doc).encode(), "text/html; charset=utf-8")
         elif item == "document.pdf":
-            self._send_file(Path(doc.pdf), "application/pdf")
+            self._send_file(Path(doc.pdf), "application/pdf", ranges=True)
         elif item.startswith("page-") and item.endswith(".png"):
             self._send_page(doc, item[5:-4])
         else:
             self.send_error(404)
+
+    def _send_asset(self, item: str) -> None:
+        root = host.assets_dir().resolve()
+        path = (root / item).resolve()
+        if not item or not path.is_relative_to(root) or not path.is_file():
+            self.send_error(404)
+            return
+        self._send_file(path, host.content_type(path), cache=True)
 
     def _send_page(self, doc: store.Document, number: str) -> None:
         if not number.isdigit() or not 1 <= int(number) <= doc.pages:
@@ -92,6 +133,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send_file(image, "image/png", cache=True)
 
+    def _redirect(self, location: str) -> None:
+        self.send_response(301)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _send(self, body: bytes, content_type: str) -> None:
         self.send_response(200)
         self.send_header("Content-Type", content_type)
@@ -100,20 +147,45 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_file(self, path: Path, content_type: str, cache: bool = False) -> None:
+    def _send_file(self, path: Path, content_type: str, cache: bool = False, ranges: bool = False) -> None:
+        """Send a file. With ranges, a request for part of it (the Range header, which PDF.js sends to read a
+        long document a piece at a time) gets only that part."""
         if not path.exists():
             self.send_error(404)
             return
         size = path.stat().st_size
-        self.send_response(200)
+        start, end = 0, size - 1
+        wanted = self.headers.get("Range", "") if ranges else ""
+        part = re.fullmatch(r"bytes=(\d*)-(\d*)", wanted.strip())
+        if part and (part.group(1) or part.group(2)):
+            if part.group(1):
+                start = int(part.group(1))
+                end = min(int(part.group(2)), size - 1) if part.group(2) else size - 1
+            else:  # bytes=-N: the last N bytes
+                start = max(size - int(part.group(2)), 0)
+            if start > end or start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        else:
+            self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(size))
-        # Page images never change once rendered, so a browser may keep them.
+        self.send_header("Content-Length", str(end - start + 1))
+        if ranges:
+            self.send_header("Accept-Ranges", "bytes")
+        # Page images and the viewer's files never change at the same address, so a browser may keep them.
         self.send_header("Cache-Control", "max-age=86400" if cache else "no-store")
         self.end_headers()
         with path.open("rb") as f:
-            while chunk := f.read(1 << 20):
+            f.seek(start)
+            left = end - start + 1
+            while left > 0 and (chunk := f.read(min(1 << 20, left))):
                 self.wfile.write(chunk)
+                left -= len(chunk)
 
     def log_message(self, fmt: str, *args: object) -> None:
         pass  # one line per request would bury whatever started the server
