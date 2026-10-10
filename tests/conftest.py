@@ -40,8 +40,25 @@ def sample_pdf(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return pdf
 
 
-def minimal_pdf(pages: list[list[str]]) -> bytes:
-    """A valid PDF with the given lines of text on each page, written out directly."""
+@pytest.fixture(scope="session")
+def bottom_pdf(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Three pages; on page two the quote (BOTTOM_QUOTE) is the last line, near the foot of the page."""
+    pdf = tmp_path_factory.mktemp("pdf") / "bottom.pdf"
+    pdf.write_bytes(minimal_pdf([["PAGE ONE"], ["PAGE TWO", BOTTOM_QUOTE], ["PAGE THREE"]], last_line_y=60))
+    return pdf
+
+
+BOTTOM_QUOTE = "the quoted line at the foot of the second page"
+
+
+@pytest.fixture(scope="session")
+def bottom_quote() -> str:
+    return BOTTOM_QUOTE
+
+
+def minimal_pdf(pages: list[list[str]], last_line_y: int | None = None) -> bytes:
+    """A valid PDF with the given lines of text on each page, written out directly, from the top down; with
+    last_line_y, each page's last line is placed that many points above the foot of the page instead."""
     objects: list[bytes] = []
 
     def add(body: bytes) -> int:
@@ -52,6 +69,10 @@ def minimal_pdf(pages: list[list[str]]) -> bytes:
     kids, contents = [], []
     for lines in pages:
         shown = " ".join(f"({text}) Tj 0 -30 Td" for text in lines)
+        if last_line_y is not None and len(lines) > 1:
+            *head, last = lines
+            shown = " ".join(f"({text}) Tj 0 -30 Td" for text in head)
+            shown += f" ET BT /F1 24 Tf 72 {last_line_y} Td ({last}) Tj"
         stream = f"BT /F1 24 Tf 72 700 Td {shown} ET".encode()
         contents.append(add(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream)))
     pages_obj = len(objects) + len(pages) + 1

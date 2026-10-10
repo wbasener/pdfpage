@@ -189,9 +189,22 @@ function setPage(n) {
 }
 
 function goPage(n) {
+  release();
   n = clamp(n, 1, S.pages || n);
   if (S.view === 'images') showImage(n);
   else if (S.viewer && S.viewer.pdfDocument) S.viewer.currentPageNumber = n;
+}
+
+// After the viewer scrolls to the quote, the page box shows the cited page, even where the quote is at the
+// foot of its page and most of the window shows the next one (PDF.js names the page most in view). It follows
+// PDF.js again once the reader moves: a wheel, a key, a touch, a click in the pages, or a page button.
+function hold(n) { S.held = n; setPage(n); }
+function release() {
+  if (!S.held) return;
+  S.held = 0;
+  if (S.view === 'pdf' && S.viewer && S.viewer.pdfDocument && S.viewer.currentPageNumber !== S.page) {
+    setPage(S.viewer.currentPageNumber);
+  }
 }
 
 // Scroll so the quote sits a quarter of the way down the window, and across so it is in view.
@@ -230,6 +243,7 @@ function scrollToQuote(smooth) {
   if (x1 - x0 > box.clientWidth - 40) x = x0 - 20;
   else if (x0 < x + 20 || x1 > x + box.clientWidth - 20) x = (x0 + x1) / 2 - box.clientWidth / 2;
   box.scrollTo({ top: Math.max(0, y), left: Math.max(0, x), behavior: smooth ? 'smooth' : 'auto' });
+  if (S.view === 'pdf') hold(rec.page);
 }
 
 // ------------------------------------------------------------------ size
@@ -622,11 +636,21 @@ async function openPdf(legacy) {
   let first = true;
   eventBus.on('pagesinit', () => {
     applyZoom(S.rec.zoom);
-    if (start === S.rec.page && S.rec.highlight) requestAnimationFrame(() => scrollToQuote(false));
-    else viewer.currentPageNumber = start;
-    setPage(start);
+    if (start === S.rec.page && S.rec.highlight) {
+      hold(start);
+      requestAnimationFrame(() => scrollToQuote(false));
+    } else {
+      viewer.currentPageNumber = start;
+      setPage(start);
+    }
   });
-  eventBus.on('pagechanging', (e) => setPage(e.pageNumber));
+  eventBus.on('pagechanging', (e) => { if (!S.held) setPage(e.pageNumber); });
+  for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+    container.addEventListener(type, release, { passive: true });
+  }
+  document.addEventListener('keydown', (e) => {   // keys that scroll the pages, wherever the focus is
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) release();
+  });
   eventBus.on('scalechanging', (e) => {
     S.fitWord = ZOOM_WORDS.includes(e.presetValue) ? e.presetValue : null;
     showScale(e.scale, S.fitWord);
@@ -657,7 +681,12 @@ async function openPdf(legacy) {
 function imageUrl(n) { return new URL(S.rec.images.replace('{page}', String(n)), S.rec.imagesBase).href; }
 function showImage(n) {
   n = clamp(n, 1, S.pages || n);
-  const img = $('img');
+  let img = $('img');
+  if (!img) {   // made here, not in the page, so the page never holds an image without an address
+    img = el('img');
+    img.id = 'img';
+    $('imgPage').prepend(img);
+  }
   img.onload = () => {
     $('msg').hidden = true;
     if ((!S.imgShown || S.wantQuote) && n === S.rec.page && S.rec.highlight) scrollToQuote(S.imgShown);

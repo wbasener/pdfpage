@@ -15,15 +15,20 @@
      data-pdfpage-label="Cited document"   the words in the pane's bar (default "Document")
      data-pdfpage-target="#selector"       open in that element of the host page instead of the floating pane
 
-   From a script: pdfpage.open(url, {label, target, trigger}), pdfpage.close(), pdfpage.isOpen().
+   From a script: pdfpage.open(url, {label, target, trigger}) returns the pane's id ("pdfpage-pane" for the
+   floating pane, "pdfpage-pane-1" and on for panes inside host elements); pdfpage.close() closes every pane,
+   and pdfpage.close(which) one of them: its id, an element in it, its host element (or that element's
+   selector), or the element that opened it; pdfpage.isOpen() and pdfpage.isOpen(which) say whether any or that
+   one is open.
    Events on document: "pdfpage:open" (detail {url, trigger}) and "pdfpage:close" (detail {trigger}). While its
    document is open, the clicked element has the class "pdfpage-active" and aria-expanded="true".
 
    The pane follows the host page's theme: <html data-pdfpage-theme="light|dark">, else <html data-theme="...">,
    else the page's color-scheme, else the system's; the viewer is told when it changes. The host page is pushed
    aside while the pane is open (html.pdfpage-pane-open body gets a right margin, the pane's width, which is also the
-   CSS variable --pdfpage-pane-width); <html data-pdfpage-push="off"> turns that off. --pdfpage-pane-top sets how
-   far below the top of the window the pane starts, for a host with a fixed header. */
+   CSS variable --pdfpage-pane-width), and the clicked element is kept in view as the page wraps again;
+   <html data-pdfpage-push="off"> turns both off. --pdfpage-pane-top sets how far below the top of the window
+   the pane starts, for a host with a fixed header. */
 (function () {
   'use strict';
   if (window.pdfpage && window.pdfpage.open) return;   // loaded twice
@@ -34,6 +39,7 @@
   var root = document.documentElement;
   var panes = [];             // {box, frame, link, label, trigger, inline}
   var floating = null;
+  var made = 0;               // inline panes made so far, for their ids
 
   function storedWidth() {
     try { return parseInt(localStorage.getItem(WIDTH_KEY), 10) || 0; } catch (e) { return 0; }
@@ -65,6 +71,7 @@
   function build(inline) {
     var box = document.createElement(inline ? 'div' : 'aside');
     box.className = 'pdfpage-pane' + (inline ? ' pdfpage-pane-inline' : '');
+    box.id = inline ? 'pdfpage-pane-' + (++made) : 'pdfpage-pane';   // what open() returns and close(id) takes
     box.hidden = true;
     box.setAttribute('aria-label', 'Document');
     box.innerHTML =
@@ -141,15 +148,45 @@
     p.box.dataset.theme = hostTheme();
     var src = withTheme(full);
     if (p.frame.getAttribute('src') !== src) p.frame.setAttribute('src', src);
+    var t = p.trigger && p.trigger.getBoundingClientRect ? p.trigger : null;
+    var before = t ? t.getBoundingClientRect().top : 0;
     p.box.hidden = false;
     if (!p.inline) {
       setWidth(defaultWidth(), false);
       root.classList.add('pdfpage-pane-open');
       if (window.innerWidth <= NARROW) p.box.querySelector('.pdfpage-pane-close').focus();
+      else if (t && root.getAttribute('data-pdfpage-push') !== 'off') keepInView(t, before);
     } else {
       p.box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     document.dispatchEvent(new CustomEvent('pdfpage:open', { detail: { url: full, trigger: p.trigger } }));
+    return p.box.id;
+  }
+
+  // The pane narrows the page, so its text wraps again and the clicked element moves. Put it back where the
+  // reader saw it, then scroll it into view, across too, inside any scrolling box that holds it (a wide table).
+  function keepInView(t, before) {
+    var after = t.getBoundingClientRect().top;   // reading it lays the narrower page out
+    if (Math.abs(after - before) > 1) window.scrollBy(0, after - before);
+    t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  // A pane named by its id (what open() returned), by an element in it, by the element it was opened in
+  // (data-pdfpage-target, as an element or a selector), or by the element that opened it.
+  function find(which) {
+    if (which && typeof which === 'object' && which.box) return which;
+    var el = which;
+    if (typeof which === 'string') {
+      for (var i = 0; i < panes.length; i++) if (panes[i].box.id === which) return panes[i];
+      try { el = document.querySelector(which); } catch (e) { el = null; }
+      el = el || document.getElementById(which);
+    }
+    if (!el || el.nodeType !== 1) return null;
+    for (var j = 0; j < panes.length; j++) {
+      var p = panes[j];
+      if (p.box === el || p.box.contains(el) || p.trigger === el || (p.inline && p.box.parentNode === el)) return p;
+    }
+    return null;
   }
 
   function close(p) {
@@ -167,7 +204,11 @@
     });
   }
 
-  function isOpen() { return panes.some(function (x) { return !x.box.hidden; }); }
+  function isOpen(which) {
+    if (which === undefined || which === null) return panes.some(function (x) { return !x.box.hidden; });
+    var p = find(which);
+    return Boolean(p && !p.box.hidden);
+  }
 
   document.addEventListener('click', function (e) {
     var t = e.target.closest && e.target.closest('[data-pdfpage]');
@@ -213,5 +254,18 @@
     if (floating && !floating.box.hidden) setWidth(defaultWidth(), false);
   });
 
-  window.pdfpage = { open: open, close: function () { close(); }, isOpen: isOpen, version: '0.2.0' };
+  window.pdfpage = {
+    open: open,
+    // close() closes every open pane; close(which) closes one: its id, an element in it, its host element or
+    // selector, or the element that opened it. True when a pane was closed.
+    close: function (which) {
+      if (which === undefined || which === null) { var any = isOpen(); close(); return any; }
+      var p = find(which);
+      if (!p || p.box.hidden) return false;
+      close(p);
+      return true;
+    },
+    isOpen: isOpen,
+    version: '0.2.1',
+  };
 })();

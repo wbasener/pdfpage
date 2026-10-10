@@ -191,6 +191,7 @@ def test_assets_are_in_the_package() -> None:
     for name in ASSETS:
         assert (root / name).is_file(), name
     assert "Apache License" in (root / "pdfjs/LICENSE").read_text(encoding="utf-8")
+    assert "<img" not in (root / "viewer.html").read_text(encoding="utf-8"), "an image is made only when used"
     assert pdfpage.content_type("x/pdf.min.mjs").startswith("text/javascript")
     assert pdfpage.content_type("a.wasm") == "application/wasm"
 

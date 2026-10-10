@@ -25,6 +25,7 @@ The same viewer works in two ways:
 ## What the viewer gives you
 
 - **The page, with the quote marked.** The document opens at the chosen page with the quoted passage outlined in orange, scrolled so the passage is in view; "Back to the quote" returns to it.
+  The page box shows the cited page then, even when the quote is at the foot of its page and the next page fills most of the window; once the reader scrolls, it shows the page that fills most of the window.
   The quote is found word by word in the PDF's text (`quote_boxes`), so it is marked only where the PDF has text; a scan carries text only where it has been through character recognition.
 - **Scrolling through the whole document**, drawn by [PDF.js](https://mozilla.github.io/pdf.js/), which comes with the package.
   Previous and Next, a page-number box, and the left and right arrow keys move a page at a time.
@@ -184,11 +185,14 @@ A link (`<a href=... data-pdfpage>`) still opens in a new tab when clicked with 
 
 - `data-pdfpage-label` sets the words in the pane's bar (default "Document").
 - `data-pdfpage-target="#selector"` opens the viewer inside that element of the page instead of the floating pane.
-- From a script: `pdfpage.open(url, {label, target, trigger})`, `pdfpage.close()`, `pdfpage.isOpen()`.
+- From a script: `pdfpage.open(url, {label, target, trigger})` opens a pane and returns its id (`"pdfpage-pane"` for the floating pane, `"pdfpage-pane-1"` and on for panes inside host elements).
+  `pdfpage.close()` closes every open pane; `pdfpage.close(which)` closes one, named by its id, by an element in it, by the host element it opened in (or that element's selector, such as `"#slot"`), or by the element that opened it, and returns whether it closed one.
+  `pdfpage.isOpen()` and `pdfpage.isOpen(which)` say whether any pane, or that one, is open.
 - Events on `document`: `pdfpage:open` (with `detail.url` and `detail.trigger`) and `pdfpage:close`.
   While its document is open, the clicked element has the class `pdfpage-active` and `aria-expanded="true"`.
 - The pane follows the host page's theme: `<html data-pdfpage-theme="light">` or `"dark"` if set, else `<html data-theme="...">`, else the page's `color-scheme`, else the system's; when it changes, the viewer changes with it.
 - While the pane is open, the page's `body` gets a right margin of the pane's width, so nothing is hidden behind it; the width is also the CSS variable `--pdfpage-pane-width`.
+  Because the narrower page wraps again, the clicked element moves; the pane puts it back where the reader saw it and scrolls it into view, across as well, inside any scrolling box that holds it (a wide table, for example).
   `<html data-pdfpage-push="off">` turns the margin off, for a page that makes room another way, for example `html.pdfpage-pane-open main { margin-right: var(--pdfpage-pane-width); }` under a full-width header.
 - CSS variables for the host: `--pdfpage-pane-top` (how far below the top of the window the pane starts, for a fixed header), `--pdfpage-pane-z` (stacking order, default 60) and `--pdfpage-inline-height` (a pane inside an element, default 75vh).
 

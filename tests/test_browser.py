@@ -22,6 +22,7 @@ from pdfpage import server, store
 
 sync_api = pytest.importorskip("playwright.sync_api")
 
+TEXT = "Words that wrap again when the page is made narrower by the pane. " * 60
 LONG_TITLE = ("A citation title long enough to fill several lines of a narrow window " * 6)[:300]
 DESKTOP = {"width": 1440, "height": 900}
 PHONE = {"width": 390, "height": 844}
@@ -95,6 +96,10 @@ def host(tmp_path: Path, sample_pdf: Path, quote: str) -> Iterator[str]:
 <a id="cite2" href="{url2}" data-pdfpage>Long</a>
 <div id="slot"></div>
 <button type="button" id="inline" data-pdfpage="{url}" data-pdfpage-target="#slot">In the page</button>
+<p>{TEXT}</p>
+<div id="wide" style="overflow-x: auto"><div style="width: 2400px; padding: 8px">
+<button type="button" id="far" style="margin-left: 1250px" data-pdfpage="{url}">Far right</button></div></div>
+<p>{TEXT}</p>
 </main></body></html>""",
         encoding="utf-8",
     )
@@ -130,6 +135,9 @@ def _scale(page: Any) -> float:
 
 def test_viewer_opens_at_the_quote_and_draws_its_box(browser: Any, tab: str) -> None:
     page = _open(browser, f"{tab}/sample/")
+    assert page.evaluate("document.querySelectorAll('img:not([src]), img[src=\"\"]').length") == 0, (
+        "no image without an address, which strict checks report as broken"
+    )
     assert page.locator(".page[data-page-number='3'] .pp-mark.pp-q").count() == 2, (
         "one box per line of the quote"
     )
@@ -140,6 +148,29 @@ def test_viewer_opens_at_the_quote_and_draws_its_box(browser: Any, tab: str) -> 
     assert stage["y"] <= box["y"] <= stage["y"] + stage["height"], "the quote is in view"
     assert not page.errors
     page.close()
+
+
+def test_page_box_shows_the_cited_page_when_the_quote_is_at_its_foot(
+    browser: Any, tmp_path: Path, bottom_pdf: Path, bottom_quote: str
+) -> None:
+    """Scrolled so a quote near the foot of page 2 is in view, most of the window shows page 3; the page box
+    must still say 2, as the citation does, until the reader moves on."""
+    store.save(
+        {"bottom": store.Document(slug="bottom", pdf=str(bottom_pdf), pages=3, page=2, quote=bottom_quote)}
+    )
+    for base in _serve(server.Handler):
+        page = _open(browser, f"{base}{store.PREFIX}/bottom/")
+        assert page.locator(".page[data-page-number='2'] .pp-mark.pp-q").count() == 1
+        page.wait_for_timeout(600)  # PDF.js has drawn the pages around and named the page most in view
+        assert page.locator("#num").input_value() == "2"
+        assert page.url.endswith("#p=2")
+        c = page.locator("#container").bounding_box()
+        page.mouse.move(c["x"] + 300, c["y"] + 300)
+        page.mouse.wheel(0, 900)
+        page.wait_for_function("document.getElementById('num').value === '3'")
+        page.click("#toQuote")
+        page.wait_for_function("document.getElementById('num').value === '2'")
+        page.close()
 
 
 @pytest.mark.parametrize("viewport", [DESKTOP, PHONE], ids=["desktop", "phone"])
@@ -361,4 +392,48 @@ def test_pane_inside_a_host_element(browser: Any, host: str) -> None:
     assert page.locator("#slot > .pdfpage-pane-inline").is_visible()
     assert page.locator("aside.pdfpage-pane").count() == 0, "no floating pane"
     _frame_ready(page)
+    page.close()
+
+
+def test_pane_keeps_the_clicked_button_in_view(browser: Any, host: str) -> None:
+    """The pane narrows the page, so the text above the button wraps onto more lines and the wide box that
+    holds it shows less; the button must still be in view, down and across, after the page settles."""
+    page = browser.new_page(viewport=DESKTOP)
+    page.goto(f"{host}/index.html")
+    far = page.locator("#far")
+    far.scroll_into_view_if_needed()
+    page.evaluate("window.scrollBy(0, document.getElementById('far').getBoundingClientRect().top - 760)")
+    far.click()
+    page.wait_for_timeout(300)
+    pane = page.locator("aside.pdfpage-pane").bounding_box()
+    b = far.bounding_box()
+    assert b["y"] >= 0 and b["y"] + b["height"] <= DESKTOP["height"], "in view down the page"
+    assert b["x"] >= 0 and b["x"] + b["width"] <= pane["x"], "in view across, left of the pane"
+    assert page.evaluate("document.getElementById('wide').scrollLeft") > 0, "the wide box scrolled across"
+    page.close()
+
+
+def test_pane_closes_one_of_several(browser: Any, host: str) -> None:
+    page = browser.new_page(viewport=DESKTOP)
+    page.goto(f"{host}/index.html")
+    page.click("#inline")
+    floating = page.evaluate("pdfpage.open(document.getElementById('cite').dataset.pdfpage)")
+    assert floating == "pdfpage-pane"
+    inline_id = page.locator("#slot > .pdfpage-pane").get_attribute("id")
+    assert page.evaluate("pdfpage.isOpen('#slot') && pdfpage.isOpen('pdfpage-pane')")
+
+    assert page.evaluate("pdfpage.close('#slot')") is True, "by the host element's selector"
+    assert not page.locator("#slot > .pdfpage-pane").is_visible()
+    assert page.locator("aside.pdfpage-pane").is_visible(), "the other pane stays open"
+    assert page.evaluate("pdfpage.close('#slot')") is False, "already closed"
+
+    page.click("#inline")
+    assert page.evaluate(f"pdfpage.close('{inline_id}')") is True, "by the pane's id"
+    page.click("#inline")
+    assert page.evaluate("pdfpage.close(document.getElementById('inline'))") is True, "by what opened it"
+    assert page.locator("aside.pdfpage-pane").is_visible()
+
+    page.click("#inline")
+    assert page.evaluate("pdfpage.close()") is True, "with no argument, every pane"
+    assert not page.evaluate("pdfpage.isOpen()")
     page.close()
